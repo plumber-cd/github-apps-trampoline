@@ -8,11 +8,16 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/plumber-cd/github-apps-trampoline/github"
 )
 
 type Config struct {
 	// PrivateKey is a path to the key file.
 	PrivateKey string `json:"key"`
+
+	// AppID is a GitHub App ID.
+	AppID string `json:"app"`
 
 	// CurrentRepositoryOnly if set to true - will request access for the current repository.
 	// Ignores Repositories and RepositoryIDs.
@@ -105,4 +110,18 @@ func Run(cfg string, currentRepo string) {
 	jsonData, err := json.MarshalIndent(config, "", "    ")
 	cobra.CheckErr(err)
 	fmt.Println(string(jsonData))
+
+	if config.PrivateKey == "" {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("Private Key was not set"))
+		os.Exit(1)
+	}
+
+	if config.AppID == "" {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("GitHub App ID was not set"))
+		os.Exit(1)
+	}
+
+	jwt, err := github.CreateJWT(config.PrivateKey, config.AppID)
+	cobra.CheckErr(err)
+	fmt.Println(jwt)
 }

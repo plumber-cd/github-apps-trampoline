@@ -1,15 +1,18 @@
 {
     "github\\.com/foo/bar": {
-        "key": "private.key",
+        "key": "test/.local/private.key",
+        "app": "139094",
         "permissions": {"contents": "write"},
         "current_repo": true
     },
     "github\\.com/foo/.*": {
-        "key": "private.key",
+        "key": "test/.local/private.key",
+        "app": "139094",
         "permissions": {"contents": "read"}
     },
     ".*": {
-        "key": "private.key",
+        "key": "test/.local/private.key",
+        "app": "139094",
         "permissions": {"contents": "read"}
     }
 }

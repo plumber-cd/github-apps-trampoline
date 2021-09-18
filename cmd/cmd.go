@@ -20,6 +20,7 @@ var (
 	verbose bool
 
 	privateKey     string
+	appID          string
 	filter         string
 	currentRepo    bool
 	repositories   string
@@ -56,7 +57,13 @@ var rootCmd = &cobra.Command{
 		if cfg == "" {
 			key := viper.GetString("key")
 			if key == "" {
-				fmt.Fprintln(os.Stderr, errors.New("If no config was provided, must at least specify private key via --key or GITHUB_APPS_TRAMPOLINE_KEY"))
+				fmt.Fprintln(os.Stderr, errors.New("If no config was provided, must specify private key via --key or GITHUB_APPS_TRAMPOLINE_KEY"))
+				os.Exit(1)
+			}
+
+			app := viper.GetString("app")
+			if app == "" {
+				fmt.Fprintln(os.Stderr, errors.New("If no config was provided, must specify app ID via --app or GITHUB_APPS_TRAMPOLINE_APP"))
 				os.Exit(1)
 			}
 
@@ -67,6 +74,7 @@ var rootCmd = &cobra.Command{
 
 			config := helper.Config{
 				PrivateKey: key,
+				AppID:      app,
 			}
 
 			if currentRepo := viper.GetBool("current-repo"); currentRepo {
@@ -173,6 +181,12 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&privateKey, "key", "k", "", "path to the private key")
 	if err := viper.BindPFlag("key", rootCmd.PersistentFlags().Lookup("key")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&appID, "app", "a", "", "app ID")
+	if err := viper.BindPFlag("app", rootCmd.PersistentFlags().Lookup("app")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
