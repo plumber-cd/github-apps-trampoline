@@ -26,6 +26,7 @@ TBD
 
 ```bash
 # Configurable via JSON as AskPass Helper
+# Using full JSON config will always supersede any CLI arguments
 cat < EOF > config.json
 {
     "github\\.com/foo/bar": {
@@ -43,7 +44,7 @@ cat < EOF > config.json
         "installation": "<alternatively - installation path such as github.com/foo>",
         "repository_ids": "<optional XXX,YYY>",
         "repositories": "<optional foo,bar>",
-        "permissions": {"contents": "read"},
+        "permissions": {"contents": "read"}
     }
 }
 EOF

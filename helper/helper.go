@@ -3,6 +3,10 @@ package helper
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
+
+	"github.com/spf13/cobra"
 )
 
 type Config struct {
@@ -31,6 +35,44 @@ type Config struct {
 	InstallationID *int `json:"installation_id,omitempty"`
 }
 
-func Run(cfg string) {
-	fmt.Println(cfg)
+func Run(cfg string, currentRepo string) {
+	configs := map[string]Config{}
+	if err := json.Unmarshal([]byte(cfg), &configs); err != nil {
+		cobra.CheckErr(err)
+	}
+
+	var config Config
+	if currentRepo == "" {
+		if len(configs) != 1 {
+			fmt.Fprintln(os.Stderr, fmt.Errorf(
+				"In CLI mode expected exactly 1 matcher, got: %d", len(configs)))
+			os.Exit(1)
+		}
+
+		config = func(c map[string]Config) Config {
+			for _, v := range c {
+				return v
+			}
+			panic("Can't get first entry in a map of exactly one element")
+		}(configs)
+	} else {
+		config = func(c map[string]Config) Config {
+			currentRepoBytes := []byte(currentRepo)
+			for filter, config := range c {
+				matched, err := regexp.Match(filter, currentRepoBytes)
+				cobra.CheckErr(err)
+				if matched {
+					return config
+				}
+			}
+
+			// Nothing to do - request was probably not for this helper
+			os.Exit(0)
+			panic("Emulating return on exit")
+		}(configs)
+	}
+
+	jsonData, err := json.MarshalIndent(config, "", "    ")
+	cobra.CheckErr(err)
+	fmt.Println(string(jsonData))
 }

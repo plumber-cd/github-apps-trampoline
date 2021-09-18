@@ -14,6 +14,6 @@
         "installation": "<alternatively - installation path such as github.com/foo>",
         "repository_ids": "<optional XXX,YYY>",
         "repositories": "<optional foo,bar>",
-        "permissions": {"contents": "read"},
+        "permissions": {"contents": "read"}
     }
 }

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -37,6 +39,7 @@ var rootCmd = &cobra.Command{
 	Short: "A GIT_ASKPASS trampoline for GitHub Apps",
 	Long: `A cross-platform no-dependency GIT_ASKPASS trampoline for GitHub Apps,
 				written in Go`,
+	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if cfgFile != "" {
 			dat, err := os.ReadFile(cfgFile)
@@ -107,7 +110,40 @@ var rootCmd = &cobra.Command{
 			cfg = string(jsonData)
 		}
 
-		helper.Run(cfg)
+		if cliMode = viper.GetBool("cli"); !cliMode {
+			if args[0] != "get" {
+				os.Exit(0)
+			}
+
+			inBytes, err := ioutil.ReadAll(os.Stdin)
+			cobra.CheckErr(err)
+			in := string(inBytes)
+
+			var protocol, host, path string
+
+			re := regexp.MustCompile("(protocol|host|path)=(.*)")
+			result := re.FindAllStringSubmatchIndex(in, -1)
+			for _, match := range result {
+				key := in[match[2]:match[3]]
+				value := in[match[4]:match[5]]
+				switch key {
+				case "protocol":
+					protocol = value
+				case "host":
+					host = value
+				case "path":
+					path = value
+				}
+			}
+
+			if protocol != "https" {
+				os.Exit(0)
+			}
+
+			helper.Run(cfg, fmt.Sprintf("%s/%s", host, path))
+		} else {
+			helper.Run(cfg, "")
+		}
 	},
 }
 
