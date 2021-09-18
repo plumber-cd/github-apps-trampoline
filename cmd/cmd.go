@@ -132,7 +132,7 @@ var rootCmd = &cobra.Command{
 				case "host":
 					host = value
 				case "path":
-					path = value
+					path = strings.TrimSuffix(value, ".git")
 				}
 			}
 

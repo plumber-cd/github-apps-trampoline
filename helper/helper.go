@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,18 @@ func Run(cfg string, currentRepo string) {
 			}
 			panic("Can't get first entry in a map of exactly one element")
 		}(configs)
+
+		if config.CurrentRepositoryOnly != nil && *config.CurrentRepositoryOnly {
+			fmt.Fprintln(os.Stderr, fmt.Errorf(
+				"Can't infer current repository in CLI mode"))
+			os.Exit(1)
+		}
+
+		if config.Installation == nil && config.InstallationID == nil {
+			fmt.Fprintln(os.Stderr, fmt.Errorf(
+				"Either installation or installation ID must be specified in CLI mode"))
+			os.Exit(1)
+		}
 	} else {
 		config = func(c map[string]Config) Config {
 			currentRepoBytes := []byte(currentRepo)
@@ -70,6 +83,23 @@ func Run(cfg string, currentRepo string) {
 			os.Exit(0)
 			panic("Emulating return on exit")
 		}(configs)
+
+		if config.CurrentRepositoryOnly != nil && *config.CurrentRepositoryOnly {
+			config.RepositoryIDs = nil
+			split := strings.Split(currentRepo, "/")
+			repos := []string{split[len(split)-1]}
+			config.Repositories = &repos
+		}
+
+		if config.InstallationID == nil {
+			if config.Installation != nil {
+				// TBD: convert installation into ID
+				fmt.Println()
+			} else {
+				// TBD: infer installation ID from current repo
+				fmt.Println()
+			}
+		}
 	}
 
 	jsonData, err := json.MarshalIndent(config, "", "    ")

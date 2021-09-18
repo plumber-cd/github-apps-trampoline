@@ -10,10 +10,6 @@
     },
     ".*": {
         "key": "private.key",
-        "installation_id": "<numeric ID of the installation - if no provided will automatically infer from the current repo>",
-        "installation": "<alternatively - installation path such as github.com/foo>",
-        "repository_ids": "<optional XXX,YYY>",
-        "repositories": "<optional foo,bar>",
         "permissions": {"contents": "read"}
     }
 }
