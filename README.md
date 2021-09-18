@@ -25,6 +25,10 @@ TBD
 TBD
 
 ```bash
+# To use as a helper, configure your Git Client as follows
+git config --global credential.useHttpPath true
+git config --global credential.helper "/path/to/github-apps-trampoline -c /path/to/config.json"
+
 # Configurable via JSON as AskPass Helper
 # Using full JSON config will always supersede any CLI arguments
 cat < EOF > config.json

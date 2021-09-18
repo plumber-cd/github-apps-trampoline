@@ -123,7 +123,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		if cliMode = viper.GetBool("cli"); !cliMode {
-			if args[0] != "get" {
+			if len(args) != 1 || args[0] != "get" {
 				os.Exit(0)
 			}
 
@@ -152,9 +152,20 @@ var rootCmd = &cobra.Command{
 				os.Exit(0)
 			}
 
-			helper.Run(cfg, fmt.Sprintf("%s/%s", host, path))
+			token, err := helper.GetToken(cfg, fmt.Sprintf("%s/%s", host, path))
+			cobra.CheckErr(err)
+			fmt.Printf("username=%s\n", "x-access-token")
+			fmt.Printf("password=%s\n", token)
 		} else {
-			helper.Run(cfg, "")
+			token, err := helper.GetToken(cfg, "")
+			cobra.CheckErr(err)
+			out := map[string]string{
+				"username": "x-access-token",
+				"password": token,
+			}
+			outData, err := json.MarshalIndent(out, "", "    ")
+			cobra.CheckErr(err)
+			fmt.Println(string(outData))
 		}
 	},
 }

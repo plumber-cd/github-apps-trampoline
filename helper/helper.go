@@ -47,7 +47,7 @@ type Config struct {
 	InstallationID *int `json:"installation_id,omitempty"`
 }
 
-func Run(cfg string, currentRepo string) {
+func GetToken(cfg string, currentRepo string) (string, error) {
 	configs := map[string]Config{}
 	if err := json.Unmarshal([]byte(cfg), &configs); err != nil {
 		cobra.CheckErr(err)
@@ -171,9 +171,8 @@ func Run(cfg string, currentRepo string) {
 	}
 	requestData, err := json.MarshalIndent(request, "", "    ")
 	cobra.CheckErr(err)
-	fmt.Println(string(requestData))
 	token, err := github.GetToken(config.GitHubAPI, jwt, *config.InstallationID, requestData)
 	cobra.CheckErr(err)
 
-	fmt.Println(token)
+	return token.Token, nil
 }
