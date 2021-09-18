@@ -13,6 +13,12 @@ import (
 )
 
 type Config struct {
+	// GitHubServer is a GitHub server, default is github.com.
+	GitHubServer string `json:"server"`
+
+	// GitHubAPI is address for GitHub API - by default it's automatically inferred from GitHubServer.
+	GitHubAPI string `json:"api"`
+
 	// PrivateKey is a path to the key file.
 	PrivateKey string `json:"key"`
 
@@ -95,21 +101,19 @@ func Run(cfg string, currentRepo string) {
 			repos := []string{split[len(split)-1]}
 			config.Repositories = &repos
 		}
-
-		if config.InstallationID == nil {
-			if config.Installation != nil {
-				// TBD: convert installation into ID
-				fmt.Println()
-			} else {
-				// TBD: infer installation ID from current repo
-				fmt.Println()
-			}
-		}
 	}
 
-	jsonData, err := json.MarshalIndent(config, "", "    ")
-	cobra.CheckErr(err)
-	fmt.Println(string(jsonData))
+	if config.GitHubServer == "" {
+		config.GitHubServer = "github.com"
+	}
+
+	if config.GitHubAPI == "" {
+		if config.GitHubServer == "github.com" {
+			config.GitHubAPI = fmt.Sprintf("https://api.%s", config.GitHubServer)
+		} else {
+			config.GitHubAPI = fmt.Sprintf("https://%s/api/v3", config.GitHubServer)
+		}
+	}
 
 	if config.PrivateKey == "" {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("Private Key was not set"))
@@ -123,5 +127,53 @@ func Run(cfg string, currentRepo string) {
 
 	jwt, err := github.CreateJWT(config.PrivateKey, config.AppID)
 	cobra.CheckErr(err)
-	fmt.Println(jwt)
+
+	installations, err := github.GetInstallations(config.GitHubAPI, jwt)
+	cobra.CheckErr(err)
+
+	if currentRepo != "" && config.InstallationID == nil {
+		var owner string
+		if config.Installation != nil {
+			split := strings.Split(*config.Installation, "/")
+			owner = split[len(split)-2]
+		} else {
+			split := strings.Split(currentRepo, "/")
+			owner = split[len(split)-2]
+		}
+
+		installation := func(installations []github.AppInstallation, owner string) github.AppInstallation {
+			for i := range installations {
+				if installations[i].Account.Login == owner {
+					return installations[i]
+				}
+			}
+
+			// Nothing to do - request was probably not for this helper
+			os.Exit(0)
+			panic("Emulating return on exit")
+		}(installations, owner)
+
+		config.InstallationID = &installation.ID
+	}
+
+	request := map[string]interface{}{}
+	if config.Repositories != nil {
+		request["repositories"] = *config.Repositories
+	}
+	if config.RepositoryIDs != nil {
+		request["repository_ids"] = *config.RepositoryIDs
+	}
+	if config.Permissions != nil {
+		permissions := map[string]interface{}{}
+		err := json.Unmarshal(*config.Permissions, &permissions)
+		cobra.CheckErr(err)
+		request["permissions"] = permissions
+	}
+	requestData, err := json.MarshalIndent(request, "", "    ")
+	cobra.CheckErr(err)
+	fmt.Println(string(requestData))
+	token, err := github.GetToken(config.GitHubAPI, jwt, *config.InstallationID, requestData)
+	cobra.CheckErr(err)
+
+	fmt.Println(token)
 }

@@ -19,6 +19,7 @@ import (
 var (
 	verbose bool
 
+	server         string
 	privateKey     string
 	appID          string
 	filter         string
@@ -55,6 +56,8 @@ var rootCmd = &cobra.Command{
 		}
 
 		if cfg == "" {
+			server := viper.GetString("server")
+
 			key := viper.GetString("key")
 			if key == "" {
 				fmt.Fprintln(os.Stderr, errors.New("If no config was provided, must specify private key via --key or GITHUB_APPS_TRAMPOLINE_KEY"))
@@ -73,8 +76,9 @@ var rootCmd = &cobra.Command{
 			}
 
 			config := helper.Config{
-				PrivateKey: key,
-				AppID:      app,
+				GitHubServer: server,
+				PrivateKey:   key,
+				AppID:        app,
 			}
 
 			if currentRepo := viper.GetBool("current-repo"); currentRepo {
@@ -175,6 +179,12 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVar(&cliMode, "cli", false, "cli mode")
 	if err := viper.BindPFlag("cli", rootCmd.PersistentFlags().Lookup("cli")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&server, "server", "s", "", "GitHub Server")
+	if err := viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
