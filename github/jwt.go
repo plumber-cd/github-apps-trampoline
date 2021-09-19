@@ -2,12 +2,17 @@ package github
 
 import (
 	"io/ioutil"
+	"strconv"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v4"
+
+	"github.com/plumber-cd/github-apps-trampoline/logger"
 )
 
-func CreateJWT(privateKeyPath string, appID string) (string, error) {
+func CreateJWT(privateKeyPath string, appID int) (string, error) {
+	logger.Get().Printf("Creating JWT using privateKeyPath=%s appID=%d", privateKeyPath, appID)
+
 	signBytes, err := ioutil.ReadFile(privateKeyPath)
 	if err != nil {
 		return "", err
@@ -22,8 +27,14 @@ func CreateJWT(privateKeyPath string, appID string) (string, error) {
 	t.Claims = &jwt.StandardClaims{
 		IssuedAt:  time.Now().Add(-time.Second * 60).Unix(),
 		ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
-		Issuer:    appID,
+		Issuer:    strconv.Itoa(appID),
 	}
 
-	return t.SignedString(signKey)
+	token, err := t.SignedString(signKey)
+	if err != nil {
+		return "", err
+	}
+
+	logger.Get().Printf("Created JWT: %s", token)
+	return token, nil
 }

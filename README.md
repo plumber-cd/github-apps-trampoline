@@ -75,3 +75,5 @@ github-apps-trampoline --key private.key --installation 'github.com/foo'
 # It will not read STDIN and will not use config.json - it will only use the CLI input
 github-apps-trampoline --cli --key private.key --installation 'github.com/foo' --repositories 'bar,baz' --permissions '{"contents": "read"}'
 ```
+
+Enabling verbose mode will print credentials in STDERR - use with caution.
