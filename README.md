@@ -35,15 +35,18 @@ cat < EOF > config.json
 {
     "github\\.com/foo/bar": {
         "key": "private.key",
+        "app": 1,
         "permissions": {"contents": "write"},
         "current_repo": true
     },
     "github\\.com/foo/.*": {
         "key": "private.key",
+        "app": 1,
         "permissions": {"contents": "read"}
     },
     ".*": {
         "key": "private.key",
+        "app": 1,
         "installation_id": "<numeric ID of the installation - if no provided will automatically infer from the current repo>",
         "installation": "<alternatively - installation path such as github.com/foo>",
         "repository_ids": "<optional XXX,YYY>",
@@ -61,19 +64,19 @@ GITHUB_APPS_TRAMPOLINE_CONFIG="config.json" github-apps-trampoline
 # Some of these examples are not secure to use:
 #   missing --permissions will assume all permissions from the app scope
 #   missing --repository-ids, --repositories and --current-repo will assume access to all repositories in the current installation
-github-apps-trampoline --key private.key --filter 'github\.com/foo/bar' --current-repo=true --permissions '{"contents": "write"}'
-github-apps-trampoline --key private.key --filter 'github\.com/foo/.*' --permissions '{"contents": "read"}'
-github-apps-trampoline --key private.key # using no --filter is the same as using --filter '.*'
-github-apps-trampoline --key private.key --permissions '{"contents": "read"}'
-github-apps-trampoline --key private.key --repository-ids 'XXX,YYY'
-github-apps-trampoline --key private.key --repositories 'bar,baz'
-github-apps-trampoline --key private.key --installation-id 'XXX'
-github-apps-trampoline --key private.key --installation 'github.com/foo'
+github-apps-trampoline --key private.key --app 1 --filter 'github\.com/foo/bar' --current-repo=true --permissions '{"contents": "write"}'
+github-apps-trampoline --key private.key --app 1 --filter 'github\.com/foo/.*' --permissions '{"contents": "read"}'
+github-apps-trampoline --key private.key --app 1 # using no --filter is the same as using --filter '.*'
+github-apps-trampoline --key private.key --app 1 --permissions '{"contents": "read"}'
+github-apps-trampoline --key private.key --app 1 --repository-ids 'XXX,YYY'
+github-apps-trampoline --key private.key --app 1 --repositories 'bar,baz'
+github-apps-trampoline --key private.key --app 1 --installation-id 'XXX'
+github-apps-trampoline --key private.key --app 1 --installation 'github.com/foo'
 
 # As a standalone CLI
 # It will spit out JSON in STDOUT
 # It will not read STDIN and will not use config.json - it will only use the CLI input
-github-apps-trampoline --cli --key private.key --installation 'github.com/foo' --repositories 'bar,baz' --permissions '{"contents": "read"}'
+github-apps-trampoline --cli --key private.key --app 1 --installation 'github.com/foo' --repositories 'bar,baz' --permissions '{"contents": "read"}'
 ```
 
 Enabling verbose mode will print credentials in STDERR - use with caution.
