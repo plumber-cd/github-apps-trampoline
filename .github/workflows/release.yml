@@ -53,7 +53,7 @@ jobs:
           name: github-apps-trampoline
       - name: Generate SHA256SUMS
         run: |
-          cd github-apps-trampoline && sha256sum * > SHA256SUMS
+          pwd && ls -la && cd github-apps-trampoline && sha256sum * > SHA256SUMS
       - name: Release
         uses: docker://antonyurchenko/git-release:v4
         env:
