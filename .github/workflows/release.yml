@@ -1,0 +1,70 @@
+on:
+  push:
+    tags:
+      - "v*"
+
+name: Create Release
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [386, amd64, arm64]
+        exclude:
+          - os: darwin
+            arch: 386
+          - os: windows
+            arch: arm64
+    steps:
+      - name: Set RELEASE_VERSION
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.17"
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Add Windows Exe File Extension
+        if: matrix.os == 'windows'
+        run: echo "FILE_EXTENSION=.exe" >> $GITHUB_ENV
+      - name: Build Code
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: go build -o build/github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: github-apps-trampoline
+          path: build/github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+  release:
+    name: Draft Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: github-apps-trampoline
+      - name: Generate SHA256SUMS
+        run: |
+          cd github-apps-trampoline && sha256sum * > SHA256SUMS
+      - name: List Artifacts
+        run: echo "ARTIFACTS=$(echo github-apps-trampoline/*)" >> $GITHUB_ENV
+      - name: Release
+        uses: docker://antonyurchenko/git-release:v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRAFT_RELEASE: "true"
+          PRE_RELEASE: "false"
+          CHANGELOG_FILE: "CHANGELOG.md"
+          ALLOW_EMPTY_CHANGELOG: "false"
+          ALLOW_TAG_PREFIX: "true"
+        with:
+          args: |
+            ${{ env.ARTIFACTS }}
