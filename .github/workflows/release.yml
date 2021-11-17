@@ -54,8 +54,6 @@ jobs:
       - name: Generate SHA256SUMS
         run: |
           cd github-apps-trampoline && sha256sum * > SHA256SUMS
-      - name: List Artifacts
-        run: echo "ARTIFACTS=$(echo github-apps-trampoline/*)" >> $GITHUB_ENV
       - name: Release
         uses: docker://antonyurchenko/git-release:v4
         env:
@@ -66,5 +64,4 @@ jobs:
           ALLOW_EMPTY_CHANGELOG: "false"
           ALLOW_TAG_PREFIX: "true"
         with:
-          args: |
-            ${{ env.ARTIFACTS }}
+          args: github-apps-trampoline/*
