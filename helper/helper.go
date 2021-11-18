@@ -148,43 +148,8 @@ func (h GitHelper) GetToken() (string, error) {
 		return "", err
 	}
 
-	installations, err := github.GetInstallations(*h.config.GitHubAPI, jwt)
-	if err != nil {
+	if err := validateInstallationID(&h.config, jwt, h.currentRepo); err != nil {
 		return "", err
-	}
-
-	if h.config.InstallationID == nil {
-		var owner string
-
-		if h.config.Installation != nil {
-			logger.Get().Printf("Looking up installation ID for %s", *h.config.Installation)
-			split := strings.Split(*h.config.Installation, "/")
-			owner = split[len(split)-2]
-		} else {
-			logger.Get().Printf("Looking up installation for current repo %s", h.currentRepo)
-			split := strings.Split(h.currentRepo, "/")
-			owner = split[len(split)-2]
-		}
-
-		logger.Get().Printf("Owner determined %q", owner)
-
-		installationPtr := func(installations []github.AppInstallation, owner string) *github.AppInstallation {
-			for i := range installations {
-				if installations[i].Account.Login == owner {
-					logger.Get().Printf("Matched owner %q with ID %d", owner, installations[i].ID)
-					return &installations[i]
-				}
-			}
-
-			return nil
-		}(installations, owner)
-
-		if installationPtr == nil {
-			return "", &SilentExitError{Err: fmt.Errorf("Can't find an installation ID for owner %s", owner)}
-		}
-		installation := *installationPtr
-
-		h.config.InstallationID = &installation.ID
 	}
 
 	return getToken(h.config, jwt)
@@ -197,6 +162,10 @@ func (h CLIHelper) GetToken() (string, error) {
 
 	jwt, err := github.CreateJWT(h.config.PrivateKey, h.config.AppID)
 	if err != nil {
+		return "", err
+	}
+
+	if err := validateInstallationID(&h.config, jwt, ""); err != nil {
 		return "", err
 	}
 
@@ -228,6 +197,57 @@ func validateConfig(config *Config) error {
 
 	if config.AppID <= 0 {
 		return fmt.Errorf("GitHub App ID was not set")
+	}
+
+	return nil
+}
+
+func validateInstallationID(config *Config, jwt, currentRepo string) error {
+	if config.InstallationID == nil {
+		logger.Get().Printf("Installation ID was not provided, calculating automatically...")
+
+		var owner string
+		if config.Installation != nil {
+			logger.Get().Printf("Looking up installation ID for %s", *config.Installation)
+			split := strings.Split(*config.Installation, "/")
+			if len(split) > 2 {
+				owner = split[len(split)-2]
+			} else {
+				owner = split[1]
+			}
+		} else if currentRepo != "" {
+			logger.Get().Printf("Looking up installation for current repo %s", currentRepo)
+			split := strings.Split(currentRepo, "/")
+			owner = split[len(split)-2]
+		} else {
+			return &SilentExitError{Err: fmt.Errorf("Can't find an owner for automatic installation ID lookup")}
+		}
+		logger.Get().Printf("Owner determined %q", owner)
+
+		logger.Get().Printf("Getting installation IDs")
+		installations, err := github.GetInstallations(*config.GitHubAPI, jwt)
+		if err != nil {
+			return err
+		}
+
+		logger.Get().Printf("Matching installation ID for owner=%q", owner)
+		installationPtr := func(installations []github.AppInstallation, owner string) *github.AppInstallation {
+			for i := range installations {
+				if installations[i].Account.Login == owner {
+					logger.Get().Printf("Matched owner %q with ID %d", owner, installations[i].ID)
+					return &installations[i]
+				}
+			}
+
+			return nil
+		}(installations, owner)
+
+		if installationPtr == nil {
+			return &SilentExitError{Err: fmt.Errorf("Can't find an installation ID for owner %s", owner)}
+		}
+		installation := *installationPtr
+
+		config.InstallationID = &installation.ID
 	}
 
 	return nil
