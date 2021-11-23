@@ -25,8 +25,8 @@ func CreateJWT(privateKeyPath string, appID int) (string, error) {
 
 	t := jwt.New(jwt.GetSigningMethod("RS256"))
 	t.Claims = &jwt.StandardClaims{
-		IssuedAt:  time.Now().Add(-time.Second * 60).Unix(),
-		ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
+		IssuedAt:  time.Now().Add(-time.Second * 60).Unix(), // Allow 1 minute drift
+		ExpiresAt: time.Now().Add(time.Minute * 9).Unix(), // Max is 10 mins, allow 1 minute drift
 		Issuer:    strconv.Itoa(appID),
 	}
 
