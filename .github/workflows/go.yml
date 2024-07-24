@@ -1,0 +1,122 @@
+name: Go Build
+run-name: "${{ inputs.releaseVersion }}"
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        type: string
+        description: Version of the image to push
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  checks: write
+  statuses: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [386, amd64, arm64]
+        exclude:
+          - os: darwin
+            arch: 386
+          - os: windows
+            arch: arm64
+    steps:
+      - name: Set version
+        run: |
+          echo "RELEASE_VERSION=dev" >> $GITHUB_ENV
+
+      - name: Set release version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "RELEASE_VERSION=${{ github.event.inputs.releaseVersion }}" >> $GITHUB_ENV
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Add Windows Exe File Extension
+        if: matrix.os == 'windows'
+        run: echo "FILE_EXTENSION=.exe" >> $GITHUB_ENV
+
+      - name: Go Build
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build \
+            -o build/github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+          if [ "${{ matrix.os }}" = "linux" ]; then
+            go build \
+              -trimpath \
+              -ldflags='-extldflags=-static -w -s' \
+              -tags osusergo,netgo \
+              -o build/github-apps-trampoline-${{ matrix.os }}-static-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: github-apps-trampoline
+          path: build/github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+
+      - name: Upload Static Artifact
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'linux' && github.event_name == 'workflow_dispatch'
+        with:
+          name: github-apps-trampoline-static
+          path: build/github-apps-trampoline-${{ matrix.os }}-static-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: github-apps-trampoline
+          path: github-apps-trampoline
+
+      - name: Download Static Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: github-apps-trampoline-static
+          path: github-apps-trampoline-static
+
+      - name: Generate SHA256SUMS
+        run: |
+          pwd && ls -la && cd github-apps-trampoline* && sha256sum * > SHA256SUMS
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.event.inputs.releaseVersion }}
+          generateReleaseNotes: true
+          commit: ${{ github.sha }}
+          tag: ${{ github.event.inputs.releaseVersion }}
+          makeLatest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
