@@ -70,20 +70,25 @@ jobs:
               -tags osusergo,netgo \
               -o build/github-apps-trampoline-${{ matrix.os }}-static-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
           fi
+          ls -lahs build
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: github-apps-trampoline
+          name: github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}
           path: build/github-apps-trampoline-${{ matrix.os }}-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload Static Artifact
         uses: actions/upload-artifact@v4
         if: matrix.os == 'linux' && github.event_name == 'workflow_dispatch'
         with:
-          name: github-apps-trampoline-static
+          name: github-apps-trampoline-static-${{ matrix.platform }}-${{ matrix.arch }}
           path: build/github-apps-trampoline-${{ matrix.os }}-static-${{ matrix.arch }}${{ env.FILE_EXTENSION }}
+          if-no-files-found: error
+          retention-days: 1
 
   release:
     name: Release
@@ -97,18 +102,14 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: github-apps-trampoline
-          path: github-apps-trampoline
-
-      - name: Download Static Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: github-apps-trampoline-static
-          path: github-apps-trampoline-static
+          pattern: github-apps-trampoline-*
+          merge-multiple: true
+          path: /tmp/github-apps-trampoline
 
       - name: Generate SHA256SUMS
+        working-directory: /tmp/github-apps-trampoline
         run: |
-          pwd && ls -la && cd github-apps-trampoline* && sha256sum * > SHA256SUMS
+          pwd && ls -la && sha256sum * > SHA256SUMS
 
       - name: Create Release
         uses: ncipollo/release-action@v1
@@ -118,5 +119,6 @@ jobs:
           commit: ${{ github.sha }}
           tag: ${{ github.event.inputs.releaseVersion }}
           makeLatest: true
+          artifacts: "/tmp/github-apps-trampoline/*"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
