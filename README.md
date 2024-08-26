@@ -31,7 +31,7 @@ git config --global credential.helper "/path/to/github-apps-trampoline -c /path/
 
 # Configurable via JSON as AskPass Helper
 # Using full JSON config will always supersede any CLI arguments
-cat < EOF > config.json
+cat << EOF > config.json
 {
     "github\\.com/foo/bar": {
         "key": "private.key",
