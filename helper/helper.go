@@ -2,11 +2,13 @@ package helper
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/plumber-cd/github-apps-trampoline/cache"
 	"github.com/plumber-cd/github-apps-trampoline/github"
 	"github.com/plumber-cd/github-apps-trampoline/logger"
 )
@@ -38,6 +40,10 @@ type Config struct {
 	// Ignores Repositories and RepositoryIDs.
 	CurrentRepositoryOnly *bool `json:"current_repo,omitempty"`
 
+	// CurrentOwnerOnly if set to true - will request access for all repositories in the installation owner.
+	// Conflicts with CurrentRepositoryOnly.
+	CurrentOwnerOnly *bool `json:"current_owner,omitempty"`
+
 	// Repositories list of repositories to request access to.
 	// If neither Repositories nor RepositoryIDs is provided - will default to all repositories in this installation.
 	Repositories *[]string `json:"repositories,omitempty"`
@@ -54,6 +60,9 @@ type Config struct {
 
 	// InstallationID is ID of the installation that should be used to request token.
 	InstallationID *int `json:"installation_id,omitempty"`
+
+	// ResolvedOwner is derived at runtime for cache keys; it is not part of config JSON.
+	ResolvedOwner string `json:"-"`
 }
 
 type Helper struct {
@@ -115,7 +124,11 @@ func (h Helper) GitHelper(currentRepo string) (IHelper, error) {
 	}
 	config := *configPtr
 
-	if config.CurrentRepositoryOnly != nil && *config.CurrentRepositoryOnly {
+	if config.CurrentOwnerOnly != nil && *config.CurrentOwnerOnly {
+		logger.Get().Println("Enabled: CurrentOwnerOnly")
+		config.RepositoryIDs = nil
+		config.Repositories = nil
+	} else if config.CurrentRepositoryOnly != nil && *config.CurrentRepositoryOnly {
 		logger.Get().Println("Enabled: CurrentRepositoryOnly")
 		config.RepositoryIDs = nil
 		split := strings.Split(currentRepo, "/")
@@ -164,7 +177,7 @@ func (h GitHelper) GetToken() (string, error) {
 		return "", err
 	}
 
-	return getToken(h.config, jwt)
+	return getTokenWithRetry(&h.config, jwt, h.currentRepo)
 }
 
 func (h CLIHelper) GetToken() (string, error) {
@@ -181,7 +194,7 @@ func (h CLIHelper) GetToken() (string, error) {
 		return "", err
 	}
 
-	return getToken(h.config, jwt)
+	return getTokenWithRetry(&h.config, jwt, "")
 }
 
 func validateConfig(config *Config) error {
@@ -211,6 +224,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("GitHub App ID was not set")
 	}
 
+	if config.CurrentOwnerOnly != nil && *config.CurrentOwnerOnly && config.CurrentRepositoryOnly != nil && *config.CurrentRepositoryOnly {
+		return fmt.Errorf("current_owner conflicts with current_repo")
+	}
+
 	return nil
 }
 
@@ -235,9 +252,19 @@ func validateInstallationID(config *Config, jwt, currentRepo string) error {
 			return &SilentExitError{Err: fmt.Errorf("Can't find an owner for automatic installation ID lookup")}
 		}
 		logger.Get().Printf("Owner determined %q", owner)
+		config.ResolvedOwner = owner
+
+		if cache.Enabled() {
+			if cachedID, ok, err := getCachedInstallationID(config, owner); err != nil {
+				return err
+			} else if ok {
+				config.InstallationID = &cachedID
+				return nil
+			}
+		}
 
 		logger.Get().Printf("Getting installation IDs")
-		installations, err := github.GetInstallations(*config.GitHubAPI, jwt)
+		installations, _, err := getInstallationsWithCache(*config.GitHubAPI, jwt, config.AppID)
 		if err != nil {
 			return err
 		}
@@ -255,11 +282,32 @@ func validateInstallationID(config *Config, jwt, currentRepo string) error {
 		}(installations, owner)
 
 		if installationPtr == nil {
-			return &SilentExitError{Err: fmt.Errorf("Can't find an installation ID for owner %s", owner)}
+			if cache.Enabled() {
+				refreshInstallationsCache(config)
+				installations, _, err = getInstallationsWithCache(*config.GitHubAPI, jwt, config.AppID)
+				if err != nil {
+					return err
+				}
+				installationPtr = func(installations []github.AppInstallation, owner string) *github.AppInstallation {
+					for i := range installations {
+						if installations[i].Account.Login == owner {
+							logger.Get().Printf("Matched owner %q with ID %d", owner, installations[i].ID)
+							return &installations[i]
+						}
+					}
+					return nil
+				}(installations, owner)
+			}
+			if installationPtr == nil {
+				return &SilentExitError{Err: fmt.Errorf("Can't find an installation ID for owner %s", owner)}
+			}
 		}
 		installation := *installationPtr
 
 		config.InstallationID = &installation.ID
+		if cache.Enabled() {
+			setCachedInstallationID(config, owner, installation.ID)
+		}
 	}
 
 	return nil
@@ -294,10 +342,232 @@ func getToken(config Config, jwt string) (string, error) {
 		return "", err
 	}
 
+	if cache.Enabled() {
+		return getTokenWithCache(config, jwt, requestData)
+	}
+
 	token, err := github.GetToken(*config.GitHubAPI, jwt, *config.InstallationID, requestData)
 	if err != nil {
 		return "", err
 	}
 
 	return token.Token, nil
+}
+
+func getTokenWithRetry(config *Config, jwt, currentRepo string) (string, error) {
+	token, err := getToken(*config, jwt)
+	if err == nil {
+		return token, nil
+	}
+	if !cache.Enabled() {
+		return "", err
+	}
+	var apiErr *github.APIError
+	if !errors.As(err, &apiErr) {
+		return "", err
+	}
+	if apiErr.Status != 401 && apiErr.Status != 404 {
+		return "", err
+	}
+
+	logger.Get().Printf("Token request failed with status=%d, invalidating installation caches and retrying", apiErr.Status)
+	invalidateInstallationCaches(config)
+	config.InstallationID = nil
+	if err := validateInstallationID(config, jwt, currentRepo); err != nil {
+		return "", err
+	}
+
+	return getToken(*config, jwt)
+}
+
+func getTokenWithCache(config Config, jwt string, requestData []byte) (string, error) {
+	tokenKey := tokenCacheKey(config, requestData)
+	var cachedToken string
+	if hit, err := cache.Get(tokenKey, &cachedToken); err != nil {
+		return "", err
+	} else if hit && cachedToken != "" {
+		return cachedToken, nil
+	}
+
+	var token *github.AppInstallationAccessToken
+	err := cache.WithLock(tokenKey, func() error {
+		if hit, err := cache.Get(tokenKey, &cachedToken); err != nil {
+			return err
+		} else if hit && cachedToken != "" {
+			return nil
+		}
+		fetched, err := github.GetToken(*config.GitHubAPI, jwt, *config.InstallationID, requestData)
+		if err != nil {
+			return err
+		}
+		token = fetched
+		return cache.Set(tokenKey, token.Token, cache.TTLToken())
+	})
+	if err != nil {
+		return "", err
+	}
+	if cachedToken != "" {
+		return cachedToken, nil
+	}
+	if token == nil {
+		if hit, err := cache.Get(tokenKey, &cachedToken); err != nil {
+			return "", err
+		} else if hit && cachedToken != "" {
+			return cachedToken, nil
+		}
+		return "", fmt.Errorf("token was not cached")
+	}
+	return token.Token, nil
+}
+
+func getInstallationsWithCache(api, jwt string, appID int) ([]github.AppInstallation, bool, error) {
+	if !cache.Enabled() {
+		installations, err := github.GetInstallations(api, jwt)
+		return installations, false, err
+	}
+
+	key := installationsCacheKey(appID, api)
+	installations := []github.AppInstallation{}
+	if hit, err := cache.Get(key, &installations); err != nil {
+		return nil, false, err
+	} else if hit {
+		return installations, true, nil
+	}
+	var fetched []github.AppInstallation
+	err := cache.WithLock(key, func() error {
+		if hit, err := cache.Get(key, &installations); err != nil {
+			return err
+		} else if hit {
+			return nil
+		}
+		resp, err := github.GetInstallations(api, jwt)
+		if err != nil {
+			return err
+		}
+		fetched = resp
+		return cache.Set(key, fetched, cache.TTLInstallations())
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(installations) > 0 {
+		return installations, true, nil
+	}
+	if fetched != nil {
+		return fetched, false, nil
+	}
+	if hit, err := cache.Get(key, &installations); err != nil {
+		return nil, false, err
+	} else if hit {
+		return installations, true, nil
+	}
+	return []github.AppInstallation{}, false, nil
+}
+
+func getCachedInstallationID(config *Config, owner string) (int, bool, error) {
+	key := ownerCacheKey(config.AppID, *config.GitHubAPI, owner)
+	var cachedID int
+	hit, err := cache.Get(key, &cachedID)
+	if err != nil {
+		return 0, false, err
+	}
+	if !hit || cachedID == 0 {
+		return 0, false, nil
+	}
+	installationsKey := installationsCacheKey(config.AppID, *config.GitHubAPI)
+	installations := []github.AppInstallation{}
+	if listHit, err := cache.Get(installationsKey, &installations); err == nil && listHit {
+		if !installationIDMatchesOwner(installations, owner, cachedID) {
+			cache.Delete(key)
+			refreshInstallationsCache(config)
+			return 0, false, nil
+		}
+	}
+	return cachedID, true, nil
+}
+
+func setCachedInstallationID(config *Config, owner string, id int) {
+	key := ownerCacheKey(config.AppID, *config.GitHubAPI, owner)
+	_ = cache.Set(key, id, cache.TTLOwnerMapping())
+}
+
+func installationIDMatchesOwner(installations []github.AppInstallation, owner string, id int) bool {
+	for i := range installations {
+		if installations[i].Account.Login == owner {
+			return installations[i].ID == id
+		}
+	}
+	return false
+}
+
+func refreshInstallationsCache(config *Config) {
+	if config == nil || config.GitHubAPI == nil {
+		return
+	}
+	cache.Delete(installationsCacheKey(config.AppID, *config.GitHubAPI))
+	if config.ResolvedOwner != "" {
+		cache.Delete(ownerCacheKey(config.AppID, *config.GitHubAPI, config.ResolvedOwner))
+	}
+}
+
+func invalidateInstallationCaches(config *Config) {
+	refreshInstallationsCache(config)
+}
+
+func installationsCacheKey(appID int, api string) string {
+	return fmt.Sprintf("installations:app=%d api=%s", appID, api)
+}
+
+func ownerCacheKey(appID int, api, owner string) string {
+	return fmt.Sprintf("owner_map:app=%d api=%s owner=%s", appID, api, owner)
+}
+
+func tokenCacheKey(config Config, requestData []byte) string {
+	repoPart := "repos=all"
+	idPart := "repo_ids=all"
+	if config.Repositories != nil {
+		repos := append([]string{}, *config.Repositories...)
+		sort.Strings(repos)
+		repoPart = fmt.Sprintf("repos=%s", strings.Join(repos, ","))
+	}
+	if config.RepositoryIDs != nil {
+		ids := append([]int{}, *config.RepositoryIDs...)
+		sort.Ints(ids)
+		parts := make([]string, 0, len(ids))
+		for _, id := range ids {
+			parts = append(parts, fmt.Sprintf("%d", id))
+		}
+		idPart = fmt.Sprintf("repo_ids=%s", strings.Join(parts, ","))
+	}
+	permissionsPart := "permissions="
+	if config.Permissions != nil {
+		permissionsPart = fmt.Sprintf("permissions=%s", canonicalPermissions(*config.Permissions))
+	}
+	ownerPart := "owner="
+	if config.ResolvedOwner != "" {
+		ownerPart = fmt.Sprintf("owner=%s", config.ResolvedOwner)
+	}
+	return fmt.Sprintf(
+		"token:app=%d api=%s installation=%d %s %s %s %s request=%s",
+		config.AppID,
+		*config.GitHubAPI,
+		*config.InstallationID,
+		ownerPart,
+		repoPart,
+		idPart,
+		permissionsPart,
+		string(requestData),
+	)
+}
+
+func canonicalPermissions(raw json.RawMessage) string {
+	decoded := map[string]interface{}{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return string(raw)
+	}
+	out, err := json.Marshal(decoded)
+	if err != nil {
+		return string(raw)
+	}
+	return string(out)
 }

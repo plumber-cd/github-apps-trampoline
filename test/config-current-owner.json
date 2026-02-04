@@ -1,0 +1,8 @@
+{
+    "github\\.com/dee-kryvenko/.*": {
+        "key": "test/.local/private.key",
+        "app": 139094,
+        "permissions": {"contents": "read"},
+        "current_owner": true
+    }
+}

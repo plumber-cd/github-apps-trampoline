@@ -68,6 +68,7 @@ github-apps-trampoline --key private.key --app 1 --filter 'github\.com/foo/bar' 
 github-apps-trampoline --key private.key --app 1 --filter 'github\.com/foo/.*' --permissions '{"contents": "read"}'
 github-apps-trampoline --key private.key --app 1 # using no --filter is the same as using --filter '.*'
 github-apps-trampoline --key private.key --app 1 --permissions '{"contents": "read"}'
+github-apps-trampoline --key private.key --app 1 --current-owner=true
 github-apps-trampoline --key private.key --app 1 --repository-ids 'XXX,YYY'
 github-apps-trampoline --key private.key --app 1 --repositories 'bar,baz'
 github-apps-trampoline --key private.key --app 1 --installation-id 'XXX'
@@ -98,3 +99,64 @@ export GITHUB_APPS_TRAMPOLINE_TOKEN_FINGERPRINT=true
 ```
 
 When `token-fingerprint` is enabled, the helper logs a correlation line with a timestamp, repo path, and a short token fingerprint prefix to aid troubleshooting without printing full secrets.
+
+### Caching options
+
+Caching is disabled by default and must be explicitly enabled.
+
+```bash
+github-apps-trampoline --cache --cache-dir /tmp/trampoline-cache
+```
+
+Cache TTLs and locking can be tuned:
+
+```bash
+github-apps-trampoline \
+  --cache \
+  --cache-ttl-installations 5m \
+  --cache-ttl-installation-map 5m \
+  --cache-ttl-token 10m \
+  --cache-lock-timeout 30s \
+  --cache-lock-poll 200ms
+```
+
+Environment variables (prefixed with `GITHUB_APPS_TRAMPOLINE_`) are supported:
+
+```bash
+export GITHUB_APPS_TRAMPOLINE_CACHE=true
+export GITHUB_APPS_TRAMPOLINE_CACHE_DIR=/tmp/trampoline-cache
+export GITHUB_APPS_TRAMPOLINE_CACHE_TTL_INSTALLATIONS=5m
+export GITHUB_APPS_TRAMPOLINE_CACHE_TTL_INSTALLATION_MAP=5m
+export GITHUB_APPS_TRAMPOLINE_CACHE_TTL_TOKEN=10m
+export GITHUB_APPS_TRAMPOLINE_CACHE_LOCK_TIMEOUT=30s
+export GITHUB_APPS_TRAMPOLINE_CACHE_LOCK_POLL=200ms
+```
+
+Cache logging emits hit/miss/refresh/lock events. File logs may include sensitive data; stderr logs are sanitized by the caller.
+
+### Installation-wide tokens
+
+To request installation-wide tokens (all repositories in the owner installation), use `current-owner`. This conflicts with `current-repo`.
+
+```bash
+github-apps-trampoline --current-owner
+```
+
+Environment variable:
+
+```bash
+export GITHUB_APPS_TRAMPOLINE_CURRENT_OWNER=true
+```
+
+JSON config:
+
+```json
+{
+    "github\\.com/foo/.*": {
+        "key": "private.key",
+        "app": 1,
+        "current_owner": true,
+        "permissions": {"contents": "read"}
+    }
+}
+```

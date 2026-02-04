@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/plumber-cd/github-apps-trampoline/cache"
 	"github.com/plumber-cd/github-apps-trampoline/helper"
 	"github.com/plumber-cd/github-apps-trampoline/logger"
 )
@@ -28,6 +29,7 @@ var (
 	appID          int
 	filter         string
 	currentRepo    bool
+	currentOwner   bool
 	repositories   string
 	repositoryIDs  string
 	permissions    string
@@ -39,6 +41,14 @@ var (
 	logFile          string
 	logTeeStderr     bool
 	tokenFingerprint bool
+
+	cacheEnabled     bool
+	cacheDir         string
+	cacheTTLInstall  time.Duration
+	cacheTTLOwnerMap time.Duration
+	cacheTTLToken    time.Duration
+	cacheLockTimeout time.Duration
+	cacheLockPoll    time.Duration
 
 	cfgFile string
 	cfg     string
@@ -58,6 +68,15 @@ var rootCmd = &cobra.Command{
 			cobra.CheckErr(err)
 			logger.Get().Println(string(outData))
 		}
+		cache.Configure(cache.Config{
+			Enabled:          viper.GetBool("cache"),
+			Dir:              viper.GetString("cache-dir"),
+			TTLInstallations: viper.GetDuration("cache-ttl-installations"),
+			TTLOwnerMapping:  viper.GetDuration("cache-ttl-installation-map"),
+			TTLToken:         viper.GetDuration("cache-ttl-token"),
+			LockTimeout:      viper.GetDuration("cache-lock-timeout"),
+			LockPollInterval: viper.GetDuration("cache-lock-poll"),
+		})
 
 		if cfgFile := viper.GetString("config"); cfgFile != "" {
 			logger.Get().Printf("Reading config from file %s", cfgFile)
@@ -104,6 +123,10 @@ var rootCmd = &cobra.Command{
 			if currentRepo := viper.GetBool("current-repo"); currentRepo {
 				logger.Get().Println("Enabled: current-repo")
 				config.CurrentRepositoryOnly = &currentRepo
+			}
+			if currentOwner := viper.GetBool("current-owner"); currentOwner {
+				logger.Get().Println("Enabled: current-owner")
+				config.CurrentOwnerOnly = &currentOwner
 			}
 
 			if repositories := viper.GetString("repositories"); repositories != "" {
@@ -283,6 +306,10 @@ func init() {
 	if err := viper.BindPFlag("current-repo", rootCmd.PersistentFlags().Lookup("current-repo")); err != nil {
 		cobra.CheckErr(err)
 	}
+	rootCmd.PersistentFlags().BoolVar(&currentOwner, "current-owner", false, "if set to true - request token for all repositories in the installation owner (conflicts with current-repo)")
+	if err := viper.BindPFlag("current-owner", rootCmd.PersistentFlags().Lookup("current-owner")); err != nil {
+		cobra.CheckErr(err)
+	}
 
 	rootCmd.PersistentFlags().StringVarP(&repositories, "repositories", "r", "", "repositories")
 	if err := viper.BindPFlag("repositories", rootCmd.PersistentFlags().Lookup("repositories")); err != nil {
@@ -321,6 +348,35 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVar(&tokenFingerprint, "token-fingerprint", false, "log token fingerprint and correlation line")
 	if err := viper.BindPFlag("token-fingerprint", rootCmd.PersistentFlags().Lookup("token-fingerprint")); err != nil {
+		cobra.CheckErr(err)
+	}
+
+	rootCmd.PersistentFlags().BoolVar(&cacheEnabled, "cache", false, "enable caching for installations and tokens")
+	if err := viper.BindPFlag("cache", rootCmd.PersistentFlags().Lookup("cache")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().StringVar(&cacheDir, "cache-dir", "", "cache directory")
+	if err := viper.BindPFlag("cache-dir", rootCmd.PersistentFlags().Lookup("cache-dir")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().DurationVar(&cacheTTLInstall, "cache-ttl-installations", 0, "cache TTL for installations list")
+	if err := viper.BindPFlag("cache-ttl-installations", rootCmd.PersistentFlags().Lookup("cache-ttl-installations")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().DurationVar(&cacheTTLOwnerMap, "cache-ttl-installation-map", 0, "cache TTL for owner to installation mapping")
+	if err := viper.BindPFlag("cache-ttl-installation-map", rootCmd.PersistentFlags().Lookup("cache-ttl-installation-map")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().DurationVar(&cacheTTLToken, "cache-ttl-token", 0, "cache TTL for installation tokens")
+	if err := viper.BindPFlag("cache-ttl-token", rootCmd.PersistentFlags().Lookup("cache-ttl-token")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().DurationVar(&cacheLockTimeout, "cache-lock-timeout", 0, "cache lock timeout")
+	if err := viper.BindPFlag("cache-lock-timeout", rootCmd.PersistentFlags().Lookup("cache-lock-timeout")); err != nil {
+		cobra.CheckErr(err)
+	}
+	rootCmd.PersistentFlags().DurationVar(&cacheLockPoll, "cache-lock-poll", 0, "cache lock polling interval")
+	if err := viper.BindPFlag("cache-lock-poll", rootCmd.PersistentFlags().Lookup("cache-lock-poll")); err != nil {
 		cobra.CheckErr(err)
 	}
 }

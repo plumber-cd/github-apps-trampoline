@@ -24,6 +24,16 @@ type AppInstallationAccessToken struct {
 	Token string `json:"token"`
 }
 
+type APIError struct {
+	Operation string
+	Status    int
+	Body      string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("github api %s failed: status=%d body=%s", e.Operation, e.Status, e.Body)
+}
+
 func GetInstallations(api string, jwt string) ([]AppInstallation, error) {
 	logger.Get().Printf("Getting known installations for jwt from %s", api)
 
@@ -52,7 +62,11 @@ func GetInstallations(api string, jwt string) ([]AppInstallation, error) {
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("failed to list installations: status=%d body=%s", resp.StatusCode, bodyLog)
+			return nil, &APIError{
+				Operation: "list_installations",
+				Status:    resp.StatusCode,
+				Body:      bodyLog,
+			}
 		}
 
 		pageInstallations := []AppInstallation{}
@@ -97,7 +111,11 @@ func GetToken(api string, jwt string, appID int, body []byte) (*AppInstallationA
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("failed to get token: status=%d body=%s", resp.StatusCode, tokenBodyLog)
+		return nil, &APIError{
+			Operation: "get_token",
+			Status:    resp.StatusCode,
+			Body:      tokenBodyLog,
+		}
 	}
 
 	logger.Filef("Token response: %s", tokenBodyLog)
