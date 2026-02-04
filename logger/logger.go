@@ -10,18 +10,23 @@ import (
 )
 
 var (
-	logger      *log.Logger
-	logFilePath string
-	logFile     *os.File
+	combinedLogger *log.Logger
+	fileLogger     *log.Logger
+	stderrLogger   *log.Logger
+	logFilePath    string
+	logFile        *os.File
 )
 
 func init() {
-	logger = log.New(io.Discard, "[github-apps-trampoline] ", 0)
+	combinedLogger = log.New(io.Discard, "[github-apps-trampoline] ", 0)
+	fileLogger = log.New(io.Discard, "[github-apps-trampoline] ", 0)
+	stderrLogger = log.New(io.Discard, "[github-apps-trampoline] ", 0)
 	Refresh()
 }
 
 func Refresh() {
-	writers := []io.Writer{}
+	fileWriter := io.Discard
+	stderrWriter := io.Discard
 
 	configuredPath := viper.GetString("log-file")
 	if configuredPath != "" {
@@ -39,21 +44,53 @@ func Refresh() {
 			}
 		}
 		if logFile != nil {
-			writers = append(writers, logFile)
+			fileWriter = logFile
 		}
 	}
 
 	if viper.GetBool("verbose") || viper.GetBool("log-tee-stderr") {
-		writers = append(writers, os.Stderr)
+		stderrWriter = os.Stderr
 	}
 
-	if len(writers) == 0 {
-		logger.SetOutput(io.Discard)
-		return
+	combinedWriters := []io.Writer{}
+	if fileWriter != io.Discard {
+		combinedWriters = append(combinedWriters, fileWriter)
 	}
-	logger.SetOutput(io.MultiWriter(writers...))
+	if stderrWriter != io.Discard {
+		combinedWriters = append(combinedWriters, stderrWriter)
+	}
+
+	if len(combinedWriters) == 0 {
+		combinedLogger.SetOutput(io.Discard)
+	} else {
+		combinedLogger.SetOutput(io.MultiWriter(combinedWriters...))
+	}
+
+	fileLogger.SetOutput(fileWriter)
+	stderrLogger.SetOutput(stderrWriter)
 }
 
 func Get() *log.Logger {
-	return logger
+	return combinedLogger
+}
+
+func File() *log.Logger {
+	return fileLogger
+}
+
+func StderrRedacted() *log.Logger {
+	return stderrLogger
+}
+
+func Sensitivef(format string, args ...interface{}) {
+	File().Printf(format, args...)
+	StderrRedacted().Printf(format, args...)
+}
+
+func Filef(format string, args ...interface{}) {
+	File().Printf(format, args...)
+}
+
+func Stderrf(format string, args ...interface{}) {
+	StderrRedacted().Printf(format, args...)
 }

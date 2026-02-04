@@ -100,7 +100,8 @@ func GetToken(api string, jwt string, appID int, body []byte) (*AppInstallationA
 		return nil, fmt.Errorf("failed to get token: status=%d body=%s", resp.StatusCode, tokenBodyLog)
 	}
 
-	logger.Get().Printf("Token response: %s", tokenBodyLog)
+	logger.Filef("Token response: %s", tokenBodyLog)
+	logger.Stderrf("Token response: %s", redactToken(tokenBodyLog))
 
 	token := AppInstallationAccessToken{}
 	if err := json.Unmarshal(tokenBody, &token); err != nil {
@@ -134,4 +135,19 @@ func hasNextPage(linkHeader string) bool {
 		}
 	}
 	return false
+}
+
+func redactToken(body string) string {
+	needle := `"token":"`
+	start := strings.Index(body, needle)
+	if start == -1 {
+		return body
+	}
+	start += len(needle)
+	end := strings.Index(body[start:], `"`)
+	if end == -1 {
+		return body
+	}
+	end = start + end
+	return body[:start] + "[redacted]" + body[end:]
 }

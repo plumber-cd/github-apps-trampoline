@@ -204,7 +204,8 @@ var rootCmd = &cobra.Command{
 				logger.Get().Printf("Correlation: time=%s repo=%s token_fp=%s", time.Now().UTC().Format(time.RFC3339Nano), repoPath, fingerprint[:12])
 			}
 
-			logger.Get().Printf("Returning token in a helper format: %q", token)
+			logger.Filef("Returning token in a helper format: %q", token)
+			logger.Stderrf("Returning token in a helper format: [redacted]")
 			fmt.Printf("username=%s\n", "x-access-token")
 			fmt.Printf("password=%s\n", token)
 		} else {
@@ -216,7 +217,8 @@ var rootCmd = &cobra.Command{
 			token, err := cli.GetToken()
 			cobra.CheckErr(err)
 
-			logger.Get().Printf("Returning token in JSON format: %q", token)
+			logger.Filef("Returning token in JSON format: %q", token)
+			logger.Stderrf("Returning token in JSON format: [redacted]")
 			out := map[string]string{
 				"username": "x-access-token",
 				"password": token,

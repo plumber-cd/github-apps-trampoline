@@ -35,6 +35,7 @@ func CreateJWT(privateKeyPath string, appID int) (string, error) {
 		return "", err
 	}
 
-	logger.Get().Printf("Created JWT: %s", token)
+	logger.Filef("Created JWT: %s", token)
+	logger.Stderrf("Created JWT: [redacted]")
 	return token, nil
 }
