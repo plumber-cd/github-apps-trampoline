@@ -46,17 +46,17 @@ func GetInstallations(api string, jwt string) ([]AppInstallation, error) {
 			return nil, err
 		}
 
-		body, err := readBody(resp)
+		body, bodyLog, err := readBody(resp)
 		if err != nil {
 			return nil, err
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("failed to list installations: status=%d body=%s", resp.StatusCode, body)
+			return nil, fmt.Errorf("failed to list installations: status=%d body=%s", resp.StatusCode, bodyLog)
 		}
 
 		pageInstallations := []AppInstallation{}
-		if err := json.Unmarshal([]byte(body), &pageInstallations); err != nil {
+		if err := json.Unmarshal(body, &pageInstallations); err != nil {
 			return nil, err
 		}
 
@@ -91,36 +91,36 @@ func GetToken(api string, jwt string, appID int, body []byte) (*AppInstallationA
 		return nil, err
 	}
 
-	tokenBody, err := readBody(resp)
+	tokenBody, tokenBodyLog, err := readBody(resp)
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("failed to get token: status=%d body=%s", resp.StatusCode, tokenBody)
+		return nil, fmt.Errorf("failed to get token: status=%d body=%s", resp.StatusCode, tokenBodyLog)
 	}
 
-	logger.Get().Printf("Token response: %s", tokenBody)
+	logger.Get().Printf("Token response: %s", tokenBodyLog)
 
 	token := AppInstallationAccessToken{}
-	if err := json.Unmarshal([]byte(tokenBody), &token); err != nil {
+	if err := json.Unmarshal(tokenBody, &token); err != nil {
 		return nil, err
 	}
 
 	return &token, nil
 }
 
-func readBody(resp *http.Response) (string, error) {
+func readBody(resp *http.Response) ([]byte, string, error) {
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	body := string(raw)
-	if len(body) > 4096 {
-		body = body[:4096] + "...(truncated)"
+	bodyLog := string(raw)
+	if len(bodyLog) > 4096 {
+		bodyLog = bodyLog[:4096] + "...(truncated)"
 	}
-	return body, nil
+	return raw, bodyLog, nil
 }
 
 func hasNextPage(linkHeader string) bool {
