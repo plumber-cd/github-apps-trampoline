@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/plumber-cd/github-apps-trampoline/github"
@@ -83,7 +84,18 @@ func New(cfg string) *Helper {
 func (h Helper) GitHelper(currentRepo string) (IHelper, error) {
 	configPtr := func(c map[string]Config) *Config {
 		currentRepoBytes := []byte(currentRepo)
-		for filter, config := range c {
+		filters := make([]string, 0, len(c))
+		for filter := range c {
+			filters = append(filters, filter)
+		}
+		sort.Slice(filters, func(i, j int) bool {
+			if len(filters[i]) != len(filters[j]) {
+				return len(filters[i]) > len(filters[j])
+			}
+			return filters[i] < filters[j]
+		})
+		for _, filter := range filters {
+			config := c[filter]
 			matched, err := regexp.Match(filter, currentRepoBytes)
 			if err != nil {
 				panic(err)

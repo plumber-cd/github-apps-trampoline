@@ -80,3 +80,21 @@ github-apps-trampoline --cli --key private.key --app 1 --installation 'github.co
 ```
 
 Enabling verbose mode will print credentials in STDERR - use with caution.
+
+### Logging options
+
+You can route logs to a file and optionally tee to stderr:
+
+```bash
+github-apps-trampoline --log-file /tmp/trampoline.log --log-tee-stderr --verbose
+```
+
+Environment variables (prefixed with `GITHUB_APPS_TRAMPOLINE_`) are supported:
+
+```bash
+export GITHUB_APPS_TRAMPOLINE_LOG_FILE=/tmp/trampoline.log
+export GITHUB_APPS_TRAMPOLINE_LOG_TEE_STDERR=true
+export GITHUB_APPS_TRAMPOLINE_TOKEN_FINGERPRINT=true
+```
+
+When `token-fingerprint` is enabled, the helper logs a correlation line with a timestamp, repo path, and a short token fingerprint prefix to aid troubleshooting without printing full secrets.

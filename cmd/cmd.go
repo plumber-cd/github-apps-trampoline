@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,6 +35,10 @@ var (
 	installationID int
 
 	cliMode bool
+
+	logFile          string
+	logTeeStderr     bool
+	tokenFingerprint bool
 
 	cfgFile string
 	cfg     string
@@ -156,7 +163,7 @@ var rootCmd = &cobra.Command{
 				os.Exit(0)
 			}
 
-			inBytes, err := ioutil.ReadAll(os.Stdin)
+			inBytes, err := io.ReadAll(os.Stdin)
 			cobra.CheckErr(err)
 			in := string(inBytes)
 			logger.Get().Printf("Read input from git:\n%s", in)
@@ -184,11 +191,18 @@ var rootCmd = &cobra.Command{
 				os.Exit(0)
 			}
 
-			git, err := _helper.GitHelper(fmt.Sprintf("%s/%s", host, path))
+			repoPath := fmt.Sprintf("%s/%s", host, path)
+			git, err := _helper.GitHelper(repoPath)
 			checkSilentErr(err)
 
 			token, err := git.GetToken()
 			checkSilentErr(err)
+
+			if viper.GetBool("token-fingerprint") {
+				fp := sha256.Sum256([]byte(token))
+				fingerprint := hex.EncodeToString(fp[:])
+				logger.Get().Printf("Correlation: time=%s repo=%s token_fp=%s", time.Now().UTC().Format(time.RFC3339Nano), repoPath, fingerprint[:12])
+			}
 
 			logger.Get().Printf("Returning token in a helper format: %q", token)
 			fmt.Printf("username=%s\n", "x-access-token")
@@ -290,6 +304,21 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVar(&installationID, "installation-id", -1, "installation ID")
 	if err := viper.BindPFlag("installation-id", rootCmd.PersistentFlags().Lookup("installation-id")); err != nil {
+		cobra.CheckErr(err)
+	}
+
+	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "log file path")
+	if err := viper.BindPFlag("log-file", rootCmd.PersistentFlags().Lookup("log-file")); err != nil {
+		cobra.CheckErr(err)
+	}
+
+	rootCmd.PersistentFlags().BoolVar(&logTeeStderr, "log-tee-stderr", false, "tee logs to stderr even when log-file is set")
+	if err := viper.BindPFlag("log-tee-stderr", rootCmd.PersistentFlags().Lookup("log-tee-stderr")); err != nil {
+		cobra.CheckErr(err)
+	}
+
+	rootCmd.PersistentFlags().BoolVar(&tokenFingerprint, "token-fingerprint", false, "log token fingerprint and correlation line")
+	if err := viper.BindPFlag("token-fingerprint", rootCmd.PersistentFlags().Lookup("token-fingerprint")); err != nil {
 		cobra.CheckErr(err)
 	}
 }

@@ -1,7 +1,7 @@
 package github
 
 import (
-	"io/ioutil"
+	"os"
 	"strconv"
 	"time"
 
@@ -13,7 +13,7 @@ import (
 func CreateJWT(privateKeyPath string, appID int) (string, error) {
 	logger.Get().Printf("Creating JWT using privateKeyPath=%s appID=%d", privateKeyPath, appID)
 
-	signBytes, err := ioutil.ReadFile(privateKeyPath)
+	signBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return "", err
 	}
@@ -24,9 +24,9 @@ func CreateJWT(privateKeyPath string, appID int) (string, error) {
 	}
 
 	t := jwt.New(jwt.GetSigningMethod("RS256"))
-	t.Claims = &jwt.StandardClaims{
-		IssuedAt:  time.Now().Add(-time.Second * 60).Unix(), // Allow 1 minute drift
-		ExpiresAt: time.Now().Add(time.Minute * 9).Unix(), // Max is 10 mins, allow 1 minute drift
+	t.Claims = jwt.RegisteredClaims{
+		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Second * 60)), // Allow 1 minute drift
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 9)),   // Max is 10 mins, allow 1 minute drift
 		Issuer:    strconv.Itoa(appID),
 	}
 
